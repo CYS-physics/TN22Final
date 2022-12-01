@@ -1,4 +1,4 @@
-function [Lambda,Gamma,Eiter] = iDMRG_GS(Lambda,Gamma,H,Nkeep,Nmax)
+function [Lambda,Gamma,Eiter] = iDMRG_GS(Lambda,Gamma,H_loc,Nkeep,Nstep,varargin)
 
 % < Input >
 % Lambda : [1 x 2 cell] Lambda{1} and Lambda{2} contain the singular values
@@ -10,20 +10,28 @@ function [Lambda,Gamma,Eiter] = iDMRG_GS(Lambda,Gamma,H,Nkeep,Nmax)
 %       In an infinite MPS, the tensors are repeated as follows (here the
 %       numbers next to the legs indicate their orders):
 %
-% ->-Gamma{1}->-*->-diag(Lambda{1})->-*->-Gamma{2}->-*->-diag(Lambda{2})->- 
-% 1    ^     2   1                 2   1     ^    2   1                 2 
-%      |3                                    |3
+% ->-diag(Lambda{2})->-*->-Gamma{1}->-*->-diag(Lambda{1})->-*->-Gamma{2}->-*->-diag(Lambda{2})->- 
+%   1                 2  1    ^     2   1                 2   1     ^    2   1                 2 
+%                             |3                                    |3
 %
-% H : [tensor] Two-site interaction Hamiltonian. Its leg convention is as
-%       below:
+% H_loc : [tensor] MPO of interaction Hamiltonian
+%       a rank-4 tensor acting on site n. The order of legs
+%       of Hs{n} is bottom-top-left-right, where the bottom (top) leg
+%       contracts to the physical leg of bra (ket) tensor.
 %
-%    2         4        [ 2 (4) is to be contracted with the third leg
-%    ^         ^          of Gamma{1} (Gamma{2}) ]
-%    |   ...   |
-%   [     H     ]
-%    |   ...   |
-%    ^         ^
-%    1         3
+% < Option >
+% 'Krylov', .. : [numeric] The maximum dimension of the Krylov subspace to
+%       be considered, within the Lanczos method used for updating MPS
+%       tensors. That is, a tridiagonal matrix of size n-by-n (at maximal)
+%       is diagonalized in each tensor update, with n set by 'Krylov',.. .
+%       (Default: 5)
+% 'tol', .. : [numeric] The tolerance for elements on the +-1 diagonals
+%       (those next to the main diagonal) within the Lanczos method. If an
+%       element is smaller than the tolerance, then the Lanczos
+%       tridiagonalization procedure stops and only the part of the
+%       tridiagonal matrix constructed so far is diagonalized.
+%       (Default: 1e-8)
+%
 % < Output >
 % Lambda, Gamma : [1 x 2 cells each] Cell arrays of Lambda and Gamma
 %       tensors, repectively.
@@ -32,6 +40,86 @@ function [Lambda,Gamma,Eiter] = iDMRG_GS(Lambda,Gamma,H,Nkeep,Nmax)
 %       even (n = 2) bonds are updated, at the m-th "outer" iteration.
 %
 
+tobj = tic2;
+
+nKrylov = 5;
+tol = 1e-8;
+
+% parse options
+while ~isempty(varargin)
+    if numel(varargin) < 2
+        error('ERR: Option should be set by a pair of option name and value.');
+    end
+    switch varargin{1}
+        case 'Krylov'
+            nKrylov = varargin{2};
+            varargin(1:2) = [];
+        case 'tol'
+            tol = varargin{2};
+            varargin(1:2) = [];
+        otherwise
+            error('ERR: Unknown input.');
+    end
+end
+
+
+Lambda = Lambda(:);
+Gamma = Gamma(:);
+H_loc = H_loc(:);
+Nstep = Nstep;
+ldim = size(H,1); % local space dimension
+Skeep = 1e-8;
+
+% % % check the integrity of input
+if any([numel(Lambda) numel(Gamma)] ~= 2)
+    error('ERR: # of sites per unit cell should be 2.');
+end
+
+
+for it = (1:2)
+    if ~isvector(Lambda{it})
+        error(['ERR: Lambda{',sprintf('%i',it),'} should be vector.']);
+    elseif numel(Lambda{it}) ~= size(Gamma{it},2)
+        error(['ERR: Dimensions for Lambda{',sprintf('%i',it),'} and Gamma{', ...
+            sprintf('%i',it),'} do not match.']);
+    elseif numel(Lambda{mod(it,2)+1}) ~= size(Gamma{it},1)
+        error(['ERR: Dimensions for Lambda{',sprintf('%i',mod(it,2)+1), ...
+            '} and Gamma{',sprintf('%i',it),'} do not match.']);
+    elseif size(Gamma{it},3) ~= size(H_loc,2)
+        error(['ERR: The third leg of Gamma{',sprintf('%i',mod(it)), ...
+            '} should be of size equal to the leg of H.']);
+    end
+end
+
+
+for itN = (1:2)
+    if ~all(size(Gamma{itN},3) == [size(H_loc,1), size(H_loc,2)])
+        error('ERR: The first or second leg of H_loc has dimension inconsistent with the physical leg of an MPS tensor.');
+    end
+end
+% % %
+
+% show message
+disptime('iDMRG: ground state search');
+disptime(['Nkeep = ',sprintf('%i',Nkeep),', # of steps = ',sprintf('%i',Nstep)]);
+
+
+
+% ground-state energy for each iteration
+Eiter = zeros(1,2*Nstep);
+
+L = 1;
+R = 1;
+
+
+for itS = (1:Nstep)
+
+
+
+end
+
+
+toc2(tobj,'-v');
 end
 
 
