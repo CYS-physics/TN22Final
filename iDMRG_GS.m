@@ -3,14 +3,14 @@ function [Lambda,Gamma,Eiter] = iDMRG_GS(Lambda,Gamma,H_loc,Nkeep,Nstep,varargin
 % < Input >
 % Lambda : [1 x 2 cell] Lambda{1} and Lambda{2} contain the singular values
 %       at odd and even bond, respectively, as column vectors. An odd
-%       (even) bond sits just on the right of an odd (even) site.
+%       (even) bond sits just on the left of an odd (even) site.
 % Gamma : [1 x 2 cell] Gamma{1} and Gamma{2} are rank-3 "Gamma" tensors for
 %       odd and even sites, respectively. Their legs are ordered as left-
 %       right-physical(bottom).
 %       In an infinite MPS, the tensors are repeated as follows (here the
 %       numbers next to the legs indicate their orders):
 %
-% ->-diag(Lambda{2})->-*->-Gamma{1}->-*->-diag(Lambda{1})->-*->-Gamma{2}->-*->-diag(Lambda{2})->- 
+% ->-diag(Lambda{1})->-*->-Gamma{1}->-*->-diag(Lambda{2})->-*->-Gamma{2}->-*->-diag(Lambda{1})->- 
 %   1                 2  1    ^     2   1                 2   1     ^    2   1                 2 
 %                             |3                                    |3
 %
@@ -113,7 +113,31 @@ R = 1;
 
 
 for itS = (1:Nstep)
+    % update L and R (step 2,3)
+    A1 = contract(diag(Lambda{1}),2,2,Gamma{1},3,1);
+    A2 = contract(diag(Lambda{2}),2,2,Gamma{2},3,1);
+    B1 = contract(Gamma{2},3,2,diag(Lambda{1}),2,1,[1 3 2]);
+    B2 = contract(Gamma{1},3,2,diag(Lambda{2}),2,1,[1 3 2]);
 
+    L = updateLeft(L,3,A1,H_loc,4,A1);
+    L = updateLeft(L,3,A2,H_loc,4,A2);
+    R = updateLeft(R,3,permute(B1,[2 1 3]), ...
+        permute(H_loc,[1 2 4 3]),4,permute(B1,[2 1 3]));
+    R = updateLeft(R,3,permute(B2,[2 1 3]), ...
+        permute(H_loc,[1 2 4 3]),4,permute(B2,[2 1 3]));
+
+    % use the trial wavefunction given in step 4.
+    Aold = contract(diag(Lambda{2}),2,2,Gamma{2},3,1);
+    Lambda_update = Lambda{1}.^2./Lambda{2};
+    Lambda_update(Lambda{2}<1e-8) = 0;
+    Aold = contract(Aold,3,2,diag(Lambda_update),2,1, [1 3 2]);
+    Aold = contract(Aold,3,2,Gamma{1},3,1,[1 2 4 3]);
+    Aold = contract(Aold,4,4,diag(Lambda{2}),2,1);
+
+    % variational update
+    [Anew,Eiter(itS)] = eigs_2site_GS (L,H_loc,H_loc,R,Aold,nKrylov,tol);
+
+    % update next tensor
 
 
 end
