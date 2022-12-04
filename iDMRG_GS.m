@@ -1,4 +1,4 @@
-function [A,B,Lambda,Eiter] = iDMRG_GS(A,B,Lambda,H_loc,Nkeep,Nstep,varargin)
+function [A,B,Lambda,Eiter, Fid_iter] = iDMRG_GS(A,B,Lambda,H_loc,Nkeep,Nstep,varargin)
 
 % < Input >
 % Lambda : [vector] singular value at the center
@@ -78,11 +78,11 @@ disptime(['Nkeep = ',sprintf('%i',Nkeep),', # of steps = ',sprintf('%i',Nstep)])
 
 % ground-state energy for each iteration
 Eiter = zeros(1,Nstep);
+Fid_iter = zeros(1,Nstep);
 L = 1;
 L = updateLeft(L,3,A(1,:,:),H_loc(:,:,end,:),4,A(1,:,:));
 R = 1;
 R = updateLeft(R,3,permute(B(:,1,:),[2 1 3]),permute(H_loc(:,:,:,1),[1 2 4 3]),4,permute(B(:,1,:),[2 1 3]));
-Lambda_old = Lambda;
 
 
 for itS = (1:Nstep)
@@ -91,11 +91,16 @@ for itS = (1:Nstep)
 
     T = contract(diag(Lambda),2,2,B,3,1);
     [A2, LambdaR,V] = svdTr(T,3,[1 3], Nkeep,Skeep);
+%     R = updateLeft(R,3,permute(V,[2 1 3]),[],[],permute(V,[2 1 3]));
     A2 = permute(A2,[1 3 2]);
+    LambdaR = LambdaR/norm(LambdaR);
+
 %     LambdaR = contract(diag(LambdaR),2,2,V,2,1);
 
     T = contract(A,3,2,diag(Lambda),2,1,[1 3 2]);
     [U,LambdaL,B2] = svdTr(T,3,1,Nkeep,Skeep);
+%     L = updateLeft(L,3,U,[],[],U);
+    LambdaL = LambdaL/norm(LambdaL);
 %     LambdaL = contract(U,2,2,diag(LambdaL),2,1);
 
 
@@ -114,6 +119,8 @@ for itS = (1:Nstep)
     % variational update
     [Anew,Eiter(itS)] = eigs_2site_GS (L,H_loc,H_loc,R,Aold,nKrylov,Skeep);
 
+    % fidelity
+    Fid_iter(itS) = 1-contract(Anew,4,[1 2 3 4],Aold,4,[1 2 3 4]);
     % update next tensor
     [A,S,B] =  svdTr(Anew,4,[1 3],Nkeep,Skeep);
     Lambda = S/norm(Skeep);
@@ -122,13 +129,12 @@ for itS = (1:Nstep)
 
 
     % stopping criteria
-    if sum((Lambda_old-Lambda).^2)<Nkeep*100*tol
+    if sum((Lambda-LambdaR).^2)<Nkeep*100*tol
         disp('fixed point reached in it = ',sprintf('%i',itS))
         break
 
     end
 
-    Lambda_old = Lambda;
 
 
 
