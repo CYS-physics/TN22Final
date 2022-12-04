@@ -1,12 +1,18 @@
-function [A,B,Lambda,Eiter, Fid_iter] = iDMRG_GS(A,B,Lambda,H_loc,Nkeep,Nstep,varargin)
+function [Lambda, Gamma,Eiter, Fid_iter] = iDMRG_GS(Lambda, Gamma,H_loc,Nkeep,Nstep,varargin)
 
 % < Input >
-% Lambda : [vector] singular value at the center
-% A,B : [rank-3 tensor] for even/odd nodes
-%
-%  ->-   A    ->-*->-diag(Lambda)->-*->-    B   ->-
-%   1    ^     2   1              2   1     ^    2  
-%        |3                                 |3
+% Lambda : [1 x 2 cell] Lambda{1} and Lambda{2} contain the singular values
+%       at odd and even bond, respectively, as column vectors. An odd
+%       (even) bond sits just on the left of an odd (even) site.
+% Gamma : [1 x 2 cell] Gamma{1} and Gamma{2} are rank-3 "Gamma" tensors for
+%       odd and even sites, respectively. Their legs are ordered as left-
+%       right-physical(bottom).
+%       In an infinite MPS, the tensors are repeated as follows (here the
+%       numbers next to the legs indicate their orders):
+
+% ->-diag(Lambda{1})->- *->-Gamma{1}->-*->-diag(Lambda{2})->-*->-Gamma{2}->-*->-diag(Lambda{1})->- 
+%  1                 2    1    ^     2   1                 2   1     ^    2   1                 2 
+%                              |3                                    |3
 %
 % H_loc : [tensor] MPO of interaction Hamiltonian
 %       a rank-4 tensor acting on site n. The order of legs
@@ -36,7 +42,7 @@ function [A,B,Lambda,Eiter, Fid_iter] = iDMRG_GS(A,B,Lambda,H_loc,Nkeep,Nstep,va
 
 tobj = tic2;
 
-nKrylov = 5;
+nKrylov = 10;
 
 % parse options
 while ~isempty(varargin)
@@ -62,10 +68,20 @@ tol = 1e-8;
 % % % check the integrity of input
 
 
-if ~all(size(A,3) == [size(H_loc,1), size(H_loc,2)])
-    error('ERR: The first or second leg of H_loc has dimension inconsistent with the physical leg of an MPS tensor.');
-elseif ~all(size(B,3) == [size(H_loc,1), size(H_loc,2)])
-    error('ERR: The first or second leg of H_loc has dimension inconsistent with the physical leg of an MPS tensor.');
+
+for it = (1:2)
+    if ~isvector(Lambda{it})
+        error(['ERR: Lambda{',sprintf('%i',it),'} should be vector.']);
+    elseif numel(Lambda{it}) ~= size(Gamma{it},1)
+        error(['ERR: Dimensions for Lambda{',sprintf('%i',it),'} and Gamma{', ...
+            sprintf('%i',it),'} do not match.']);
+    elseif numel(Lambda{mod(it,2)+1}) ~= size(Gamma{it},2)
+        error(['ERR: Dimensions for Lambda{',sprintf('%i',mod(it,2)+1), ...
+            '} and Gamma{',sprintf('%i',it),'} do not match.']);
+    elseif ~all(size(Gamma{it},3) == [size(H_loc,1),size(H_loc,2)])
+        error(['ERR: The third leg of Gamma{',sprintf('%i',mod(it)), ...
+            '} should be of size equal to the leg of H.']);
+    end
 end
 
 % % %
@@ -79,6 +95,10 @@ disptime(['Nkeep = ',sprintf('%i',Nkeep),', # of steps = ',sprintf('%i',Nstep)])
 % ground-state energy for each iteration
 Eiter = zeros(1,Nstep);
 Fid_iter = zeros(1,Nstep);
+
+
+A = contract(diag(Lambda{1}),2,2,Gamma{1},3,1);
+B = contract(Gamma{2},3,2,diag(Lambda{1}),2,1,[1 3 2]);
 L = 1;
 L = updateLeft(L,3,A(1,:,:),H_loc(:,:,end,:),4,A(1,:,:));
 R = 1;
@@ -88,52 +108,52 @@ R = updateLeft(R,3,permute(B(:,1,:),[2 1 3]),permute(H_loc(:,:,:,1),[1 2 4 3]),4
 for itS = (1:Nstep)
     % update L,R and prepare lambda, A,B (step 2,3)
     % move orthogonality center
-
-    T = contract(diag(Lambda),2,2,B,3,1);
-    [A2, LambdaR,V] = svdTr(T,3,[1 3], Nkeep,Skeep);
-%     R = updateLeft(R,3,permute(V,[2 1 3]),[],[],permute(V,[2 1 3]));
-    A2 = permute(A2,[1 3 2]);
-    LambdaR = LambdaR/norm(LambdaR);
-
-%     LambdaR = contract(diag(LambdaR),2,2,V,2,1);
-
-    T = contract(A,3,2,diag(Lambda),2,1,[1 3 2]);
-    [U,LambdaL,B2] = svdTr(T,3,1,Nkeep,Skeep);
-%     L = updateLeft(L,3,U,[],[],U);
-    LambdaL = LambdaL/norm(LambdaL);
-%     LambdaL = contract(U,2,2,diag(LambdaL),2,1);
-
+%     disp(itS)
+    A = contract(diag(Lambda{1}),2,2,Gamma{1},3,1);
+    A2 = contract(diag(Lambda{2}),2,2,Gamma{2},3,1);
+    B = contract(Gamma{2},3,2,diag(Lambda{1}),2,1,[1 3 2]);
+    B2 = contract(Gamma{1},3,2,diag(Lambda{2}),2,1,[1 3 2]);
 
     L = updateLeft(L,3,A,H_loc,4,A);
-    L = updateLeft(L,3,A2,H_loc,4,A2);
+%     L = updateLeft(L,3,A2,H_loc,4,A2);
     R = updateLeft(R,3,permute(B,[2 1 3]),permute(H_loc,[1 2 4 3]),4,permute(B,[2 1 3]));
-    R = updateLeft(R,3,permute(B2,[2 1 3]),permute(H_loc,[1 2 4 3]),4,permute(B2,[2 1 3]));
+%     R = updateLeft(R,3,permute(B2,[2 1 3]),permute(H_loc,[1 2 4 3]),4,permute(B2,[2 1 3]));
     
 
     % use the trial wavefunction given in step 4.
 %     Lambda_new = contract(LambdaR,2,2,diag(1./Lambda),2,1);
 %     Lambda_new = contract(Lambda_new,2,2,LambdaL,2,1);
-    Aold = contract(A2,3,2,diag(LambdaR./Lambda.*LambdaL),2,1);
+%     Lambda_new = Lambda{1}.^2./Lambda{2};
+%     Lambda_new = Lambda_new/norm(Lambda_new);
+    Aold = contract(A2,3,2,diag(Lambda{1}),2,1);
     Aold = contract(Aold,3,3,B2,3,1,[1 3 2 4]);
+    
 
     % variational update
-    [Anew,Eiter(itS)] = eigs_2site_GS (L,H_loc,H_loc,R,Aold,nKrylov,Skeep);
+    Lambda{1} = Lambda{2};
+    [Anew,Eiter(itS)] = eigs_2site_GS (L,H_loc,H_loc,R,Aold,nKrylov,tol);
 
     % fidelity
     Fid_iter(itS) = 1-contract(Anew,4,[1 2 3 4],Aold,4,[1 2 3 4]);
     % update next tensor
     [A,S,B] =  svdTr(Anew,4,[1 3],Nkeep,Skeep);
-    Lambda = S/norm(Skeep);
+%     disp(size(S))
+    Lambda{2} = S/norm(S);
     A = permute(A,[1 3 2]);
     
 
+    Gamma{1} = contract(diag(1./Lambda{1}),2,2,A,3,1);
+    Gamma{2} = contract(B,3,2,diag(1./Lambda{1}),2,1,[1 3 2]);
+    
 
-    % stopping criteria
-    if sum((Lambda-LambdaR).^2)<Nkeep*100*tol
-        disp('fixed point reached in it = ',sprintf('%i',itS))
-        break
 
-    end
+%     % stopping criteria
+%     if sum((Lambda{1}-Lambda{2}).^2)<Nkeep*100*tol
+%         disp(['fixed point reached in it = ',sprintf('%i',itS)])
+%         disp(Lambda{1})
+%         break
+% 
+%     end
 
 
 
