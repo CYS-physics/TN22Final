@@ -62,8 +62,8 @@ while ~isempty(varargin)
 end
 
 
-Skeep = 1e-8;
-tol = 1e-8;
+Skeep = 1e-12;
+tol = 1e-12;
 
 % % % check the integrity of input
 
@@ -120,10 +120,18 @@ for itS = (1:Nstep)
     LambdaL = contract(U,2,2,diag(S),2,1);
 
 
+%     disp(size(L))
+%     disp(size(A))
+%     disp(size(A2))
+%     disp(size(LambdaR))
+%     disp(size(LambdaL))
+%     disp(size(B2))
+%     disp(size(B))
+%     disp(size(R))
 
-    Aold = contract(A2,3,2,LambdaL,2,1,[1 3 2]);
+    Aold = contract(A2,3,2,LambdaR,2,1,[1 3 2]);
     Aold = contract(Aold,3,2,diag(1./Lambda{1}),2,1,[1 3 2]);
-    Aold = contract(Aold,3,2,LambdaR,2,1,[1 3 2]);
+    Aold = contract(Aold,3,2,LambdaL,2,1,[1 3 2]);
     Aold = contract(Aold,3,2,B2,3,1,[1 3 2 4]);
     
     % update L,R
@@ -141,7 +149,7 @@ for itS = (1:Nstep)
 
     
     % fidelity
-    Fid_iter(itS) = 1-contract(Anew,4,[1 2 3 4],Aold,4,[1 2 3 4]);
+    Fid_iter(itS) = abs(1-abs(contract(Anew,4,[1 2 3 4],Aold,4,[1 2 3 4])));
     
     
     
@@ -153,12 +161,12 @@ for itS = (1:Nstep)
 
     % stopping criteria
     
-    if sum((LambdaR-diag(Lambda{1})).^2)<Nkeep*tol
-        disp(['fixed point reached in it = ',sprintf('%i',itS)])
-%         disp(Lambda{1})
-        break
-
-    end
+%     if sum((LambdaR-diag(Lambda{1})).^2)<Nkeep*tol
+%         disp(['fixed point reached in it = ',sprintf('%i',itS)])
+% %         disp(Lambda{1})
+%         break
+% 
+%     end
 
     Lambda{1} = Lambda{2};
     Lambda{2} = S/norm(S);
