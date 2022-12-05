@@ -120,18 +120,10 @@ for itS = (1:Nstep)
     LambdaL = contract(U,2,2,diag(S),2,1);
 
 
-%     disp(size(L))
-%     disp(size(A))
-%     disp(size(A2))
-%     disp(size(LambdaR))
-%     disp(size(LambdaL))
-%     disp(size(B2))
-%     disp(size(B))
-%     disp(size(R))
+    Lambda_new = contract(LambdaR,2,2,diag(1./Lambda{1}),2,1);
+    Lambda_new = contract(Lambda_new,2,2,LambdaL,2,1);
 
-    Aold = contract(A2,3,2,LambdaR,2,1,[1 3 2]);
-    Aold = contract(Aold,3,2,diag(1./Lambda{1}),2,1,[1 3 2]);
-    Aold = contract(Aold,3,2,LambdaL,2,1,[1 3 2]);
+    Aold = contract(A2,3,2,Lambda_new,2,1,[1 3 2]);
     Aold = contract(Aold,3,2,B2,3,1,[1 3 2 4]);
     
     % update L,R
@@ -152,18 +144,10 @@ for itS = (1:Nstep)
     Fid_iter(itS) = abs(1-abs(contract(Anew,4,[1 2 3 4],Aold,4,[1 2 3 4])));
     
     
-    
-
-%     Gamma{1} = contract(diag(1./Lambda{1}),2,2,A,3,1);
-%     Gamma{2} = contract(B,3,2,diag(1./Lambda{1}),2,1,[1 3 2]);
-    
-
-
     % stopping criteria
     
-%     if sum((LambdaR-diag(Lambda{1})).^2)<Nkeep*tol
+%     if sum((Lambda_new-diag(Lambda{1})).^2)<Nkeep*tol
 %         disp(['fixed point reached in it = ',sprintf('%i',itS)])
-% %         disp(Lambda{1})
 %         break
 % 
 %     end
