@@ -1,4 +1,4 @@
-function [Lambda, Gamma,Eiter, Fid_iter] = iDMRG_GS(Lambda, Gamma,H_loc,Nkeep,Nstep,varargin)
+function [Lambda, A, B, Eiter, Fid_iter] = iDMRG_GS(Lambda_init, A_init, B_init, H_loc,Nkeep,Nstep,varargin)
 
 % < Input >
 % Lambda : [1 x 2 cell] Lambda{1} and Lambda{2} contain the singular values
@@ -69,20 +69,20 @@ tol = 1e-8;
 
 
 
-for it = (1:2)
-    if ~isvector(Lambda{it})
-        error(['ERR: Lambda{',sprintf('%i',it),'} should be vector.']);
-    elseif numel(Lambda{it}) ~= size(Gamma{it},1)
-        error(['ERR: Dimensions for Lambda{',sprintf('%i',it),'} and Gamma{', ...
-            sprintf('%i',it),'} do not match.']);
-    elseif numel(Lambda{mod(it,2)+1}) ~= size(Gamma{it},2)
-        error(['ERR: Dimensions for Lambda{',sprintf('%i',mod(it,2)+1), ...
-            '} and Gamma{',sprintf('%i',it),'} do not match.']);
-    elseif ~all(size(Gamma{it},3) == [size(H_loc,1),size(H_loc,2)])
-        error(['ERR: The third leg of Gamma{',sprintf('%i',mod(it)), ...
-            '} should be of size equal to the leg of H.']);
-    end
-end
+% for it = (1:2)
+%     if ~isvector(Lambda{it})
+%         error(['ERR: Lambda{',sprintf('%i',it),'} should be vector.']);
+%     elseif numel(Lambda{it}) ~= size(Gamma{it},1)
+%         error(['ERR: Dimensions for Lambda{',sprintf('%i',it),'} and Gamma{', ...
+%             sprintf('%i',it),'} do not match.']);
+%     elseif numel(Lambda{mod(it,2)+1}) ~= size(Gamma{it},2)
+%         error(['ERR: Dimensions for Lambda{',sprintf('%i',mod(it,2)+1), ...
+%             '} and Gamma{',sprintf('%i',it),'} do not match.']);
+%     elseif ~all(size(Gamma{it},3) == [size(H_loc,1),size(H_loc,2)])
+%         error(['ERR: The third leg of Gamma{',sprintf('%i',mod(it)), ...
+%             '} should be of size equal to the leg of H.']);
+%     end
+% end
 
 % % %
 
@@ -97,64 +97,71 @@ Eiter = zeros(1,Nstep);
 Fid_iter = zeros(1,Nstep);
 
 
-A = contract(diag(Lambda{1}),2,2,Gamma{1},3,1);
-B = contract(Gamma{2},3,2,diag(Lambda{1}),2,1,[1 3 2]);
-L = 1;
-L = updateLeft(L,3,A(1,:,:),H_loc(:,:,end,:),4,A(1,:,:));
-R = 1;
-R = updateLeft(R,3,permute(B(:,1,:),[2 1 3]),permute(H_loc(:,:,:,1),[1 2 4 3]),4,permute(B(:,1,:),[2 1 3]));
 
+L = 1;
+L = updateLeft(L,3,A_init{1},H_loc(:,:,end,:),4,A_init{1});
+R = 1;
+R = updateLeft(R,3,permute(B_init{1},[2 1 3]),permute(H_loc(:,:,:,1),[1 2 4 3]),4,permute(B_init{1},[2 1 3]));
+A = A_init{2};
+B = B_init{2};
+Lambda = Lambda_init;
 
 for itS = (1:Nstep)
-    % update L,R and prepare lambda, A,B (step 2,3)
-    % move orthogonality center
-%     disp(itS)
-    A = contract(diag(Lambda{1}),2,2,Gamma{1},3,1);
-    A2 = contract(diag(Lambda{2}),2,2,Gamma{2},3,1);
-    B = contract(Gamma{2},3,2,diag(Lambda{1}),2,1,[1 3 2]);
-    B2 = contract(Gamma{1},3,2,diag(Lambda{2}),2,1,[1 3 2]);
-
-    L = updateLeft(L,3,A,H_loc,4,A);
-%     L = updateLeft(L,3,A2,H_loc,4,A2);
-    R = updateLeft(R,3,permute(B,[2 1 3]),permute(H_loc,[1 2 4 3]),4,permute(B,[2 1 3]));
-%     R = updateLeft(R,3,permute(B2,[2 1 3]),permute(H_loc,[1 2 4 3]),4,permute(B2,[2 1 3]));
-    
-
+    % initialize trial wavefunction
     % use the trial wavefunction given in step 4.
-%     Lambda_new = contract(LambdaR,2,2,diag(1./Lambda),2,1);
-%     Lambda_new = contract(Lambda_new,2,2,LambdaL,2,1);
-%     Lambda_new = Lambda{1}.^2./Lambda{2};
-%     Lambda_new = Lambda_new/norm(Lambda_new);
-    Aold = contract(A2,3,2,diag(Lambda{1}),2,1);
-    Aold = contract(Aold,3,3,B2,3,1,[1 3 2 4]);
+    T = contract(diag(Lambda{2}),2,2,B,3,1);
+    [A2,S,V] = svdTr(T,3,[1 3],Nkeep,Skeep);
+    A2 = permute(A2,[1 3 2]);
+    LambdaR = diag(S);
+    LambdaR = contract(diag(S),2,2,V,2,1);
+    T = contract(A,3,2,diag(Lambda{2}),2,1,[1 3 2]);
+    [U,S,B2] = svdTr(T,3,[1],Nkeep,Skeep);
+    LambdaL = diag(S);
+    LambdaL = contract(U,2,2,diag(S),2,1);
+
+
+
+    Aold = contract(A2,3,2,LambdaL,2,1,[1 3 2]);
+    Aold = contract(Aold,3,2,diag(1./Lambda{1}),2,1,[1 3 2]);
+    Aold = contract(Aold,3,2,LambdaR,2,1,[1 3 2]);
+    Aold = contract(Aold,3,2,B2,3,1,[1 3 2 4]);
     
+    % update L,R
+    L = updateLeft(L,3,A,H_loc,4,A);
+    R = updateLeft(R,3,permute(B,[2 1 3]),permute(H_loc,[1 2 4 3]),4,permute(B,[2 1 3]));
 
+    
+    % solve eigenvalue problem
     % variational update
-    Lambda{1} = Lambda{2};
+    
     [Anew,Eiter(itS)] = eigs_2site_GS (L,H_loc,H_loc,R,Aold,nKrylov,tol);
-
-    % fidelity
-    Fid_iter(itS) = 1-contract(Anew,4,[1 2 3 4],Aold,4,[1 2 3 4]);
-    % update next tensor
-    [A,S,B] =  svdTr(Anew,4,[1 3],Nkeep,Skeep);
-%     disp(size(S))
-    Lambda{2} = S/norm(S);
+    [A,S,B] = svdTr(Anew,4,[1 3],Nkeep,Skeep);
     A = permute(A,[1 3 2]);
     
 
-    Gamma{1} = contract(diag(1./Lambda{1}),2,2,A,3,1);
-    Gamma{2} = contract(B,3,2,diag(1./Lambda{1}),2,1,[1 3 2]);
+    
+    % fidelity
+    Fid_iter(itS) = 1-contract(Anew,4,[1 2 3 4],Aold,4,[1 2 3 4]);
+    
+    
+    
+
+%     Gamma{1} = contract(diag(1./Lambda{1}),2,2,A,3,1);
+%     Gamma{2} = contract(B,3,2,diag(1./Lambda{1}),2,1,[1 3 2]);
     
 
 
-%     % stopping criteria
-%     if sum((Lambda{1}-Lambda{2}).^2)<Nkeep*100*tol
-%         disp(['fixed point reached in it = ',sprintf('%i',itS)])
+    % stopping criteria
+    
+    if sum((LambdaR-diag(Lambda{1})).^2)<Nkeep*tol
+        disp(['fixed point reached in it = ',sprintf('%i',itS)])
 %         disp(Lambda{1})
-%         break
-% 
-%     end
+        break
 
+    end
+
+    Lambda{1} = Lambda{2};
+    Lambda{2} = S/norm(S);
 
 
 
