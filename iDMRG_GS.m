@@ -145,8 +145,8 @@ for itS = (1:Nstep)
     
     
     % stopping criteria
-    
-%     if sum((Lambda_new-diag(Lambda{1})).^2)<Nkeep*tol
+%     
+%     if sum((LambdaR-diag(S)).^2)<Nkeep*tol
 %         disp(['fixed point reached in it = ',sprintf('%i',itS)])
 %         break
 % 
@@ -154,6 +154,9 @@ for itS = (1:Nstep)
 
     Lambda{1} = Lambda{2};
     Lambda{2} = S/norm(S);
+
+
+
 
 
 
