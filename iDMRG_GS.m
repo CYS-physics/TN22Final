@@ -1,18 +1,16 @@
 function [Lambda, A, B, Eiter, Fid_iter] = iDMRG_GS(Lambda_init, A_init, B_init, H_loc,Nkeep,Nstep,varargin)
 
 % < Input >
-% Lambda : [1 x 2 cell] Lambda{1} and Lambda{2} contain the singular values
-%       at odd and even bond, respectively, as column vectors. An odd
-%       (even) bond sits just on the left of an odd (even) site.
-% Gamma : [1 x 2 cell] Gamma{1} and Gamma{2} are rank-3 "Gamma" tensors for
-%       odd and even sites, respectively. Their legs are ordered as left-
+% Lambda_init : [1 x 2 cell] Lambda{1} and Lambda{2} contain the singular values
+%       1 for n-1 2 for n (save n-1 result for later lambda^-1)
+% A_init,B_init : [1 x 2 cell] rank-3 tensors, legs are ordered as left-
 %       right-physical(bottom).
 %       In an infinite MPS, the tensors are repeated as follows (here the
 %       numbers next to the legs indicate their orders):
 
-% ->-diag(Lambda{1})->- *->-Gamma{1}->-*->-diag(Lambda{2})->-*->-Gamma{2}->-*->-diag(Lambda{1})->- 
-%  1                 2    1    ^     2   1                 2   1     ^    2   1                 2 
-%                              |3                                    |3
+%   ->-  A{1}  ->-*->-  A{2}  ->-*->-diag(Lambda{2})->-*->-   B{2} ->-*->-   B{2} ->- 
+%     1   ^     2   1    ^     2   1                 2   1     ^    2   1     ^    2 
+%         |3             |3                                    |3             |3
 %
 % H_loc : [tensor] MPO of interaction Hamiltonian
 %       a rank-4 tensor acting on site n. The order of legs
@@ -33,11 +31,11 @@ function [Lambda, A, B, Eiter, Fid_iter] = iDMRG_GS(Lambda_init, A_init, B_init,
 %       (Default: 1e-8)
 %
 % < Output >
-% Lambda, Gamma : [1 x 2 cells each] Cell arrays of Lambda and Gamma
-%       tensors, repectively.
-% Eiter : [(numel(taus) x 2 x 2 matrix] Eiter(m,n,k) is the measured energy
-%       for an odd (k = 1) or even (k = 2) bond after odd (n = 1) or
-%       even (n = 2) bonds are updated, at the m-th "outer" iteration.
+% Lambda : [1 x 2 cells] Cell arrays of singular values
+% A, B   : [rank 3 tensors], A, B, Lambda will be used later for Transfer
+% matrix
+% Eiter : [Nstep vector] Eiter(m,n,k) obtained at each iteration
+% Fid_iter : [Nstep vector]fidelity 1-<psi^trial|psi_n>
 %
 
 tobj = tic2;
@@ -97,7 +95,8 @@ Eiter = zeros(1,Nstep);
 Fid_iter = zeros(1,Nstep);
 
 
-
+% prepare boundary environment, BC does not matter much as we increase the
+% length
 L = 1;
 L = updateLeft(L,3,A_init{1},H_loc(:,:,end,:),4,A_init{1});
 R = 1;
@@ -109,6 +108,7 @@ Lambda = Lambda_init;
 for itS = (1:Nstep)
     % initialize trial wavefunction
     % use the trial wavefunction given in step 4.
+    % by moving orthogonality center
     T = contract(diag(Lambda{2}),2,2,B,3,1);
     [A2,S,V] = svdTr(T,3,[1 3],Nkeep,Skeep);
     A2 = permute(A2,[1 3 2]);
@@ -126,7 +126,7 @@ for itS = (1:Nstep)
     Aold = contract(A2,3,2,Lambda_new,2,1,[1 3 2]);
     Aold = contract(Aold,3,2,B2,3,1,[1 3 2 4]);
     
-    % update L,R
+    % update L,R with An, Bn
     L = updateLeft(L,3,A,H_loc,4,A);
     R = updateLeft(R,3,permute(B,[2 1 3]),permute(H_loc,[1 2 4 3]),4,permute(B,[2 1 3]));
 
@@ -152,12 +152,9 @@ for itS = (1:Nstep)
 % 
 %     end
 
+    % update index of singular value
     Lambda{1} = Lambda{2};
     Lambda{2} = S/norm(S);
-
-
-
-
 
 
 end
